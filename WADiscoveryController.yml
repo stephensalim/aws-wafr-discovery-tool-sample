@@ -1,0 +1,319 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  WADiscoveryDelegationRoleArn:
+    Type: String
+  WADiscoveryExternalId:
+    Type: String  
+Resources:
+  AssumeAccountRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: AssumeRole
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - cloudformation:DescribeStacks
+            - lambda:AddPermission
+            - lambda:RemovePermission
+            - events:PutRule
+            - events:DeleteRule
+            - events:PutTargets
+            - events:RemoveTargets
+            - wellarchitected:*
+            Resource:  "*"
+          - Action: "sts:AssumeRole"
+            Effect: Allow
+            Resource: !Ref WADiscoveryDelegationRoleArn
+
+
+# Test payload 
+#{
+#  "ExternalId": "sssalim-demo",
+#  "RoleArn": "arn:aws:iam::159140854185:role/WADiscoveryDelegationRole",
+#  "RoleSessionName": "WADiscoveryDelegationRole"
+#}
+
+  CreateWorkload:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt AssumeAccountRole.Arn
+      Environment:
+        Variables:
+          WADiscoveryDelegationRoleArn: !Ref WADiscoveryDelegationRoleArn
+          WADiscoveryExternalId: !Ref WADiscoveryExternalId      
+      Code:
+        ZipFile: !Sub |
+            const AWS = require("aws-sdk");
+            exports.handler = async (event) => {
+                var wellarchitected = new AWS.WellArchitected();
+                var params = {
+                  Description: 'Demo Well Architected', 
+                  Environment: 'PREPRODUCTION',
+                  Lenses: [ 
+                    'wellarchitected'
+                  ],
+                  ReviewOwner: 'Demo User',
+                  WorkloadName: 'Well Architected Discovery Tool Demo',
+                  AccountIds: [
+                    '111111111111'
+                  ],
+                  AwsRegions: [
+                    'ap-southeast-2'
+                  ],
+                  Industry: 'Internet',
+                  IndustryType: 'InfoTech',
+                  Notes: 'Well Architected Discovery Tool Demo',
+                  PillarPriorities: [
+                      'security', 
+                      'reliability', 
+                      'operationalExcellence', 
+                      'performance', 
+                      'costOptimization'
+                  ],
+                  Tags: {
+                    'ApplicationName': 'WADiscoveryTool-Demo'
+                  }
+                };
+                
+                var promise = new Promise(function(resolve, reject) {  
+                  wellarchitected.createWorkload(params, function(err, data) {
+                    if (err) console.log(err, err.stack); // an error occurred
+                    else { 
+                      var output = {
+                        Workload: data,
+                        CheckResults: event
+                      }   
+                      resolve(output);
+                      }// successful response
+                  });
+                })
+                return promise 
+            };
+
+      Runtime: nodejs12.x
+
+
+  UpdateAnswerWorkload:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt AssumeAccountRole.Arn
+      Environment:
+        Variables:
+          WADiscoveryDelegationRoleArn: !Ref WADiscoveryDelegationRoleArn
+          WADiscoveryExternalId: !Ref WADiscoveryExternalId      
+      Code:
+        ZipFile: !Sub |
+            const AWS = require("aws-sdk");
+            exports.handler = async (event) => {
+                console.log(event)
+                
+                
+                var wellarchitected = new AWS.WellArchitected();
+                var params = {
+                  LensAlias: 'wellarchitected', 
+                  QuestionId: 'identities', 
+                  WorkloadId: event['Workload']['WorkloadId'],
+                  SelectedChoices:[
+                    'sec_identities_unique',
+                    'sec_identities_enforce_mechanisms',
+                    'sec_identities_identity_provider',
+                    'sec_identities_groups_attributes'
+                  ],
+                  IsApplicable: true,
+                  Notes: JSON.stringify(event['CheckResults']),
+                };
+                
+                const promise = new Promise(function(resolve, reject) {  
+                  wellarchitected.updateAnswer(params, function(err, data) {
+                    if (err) console.log(err, err.stack); // an error occurred
+                    else     resolve(data);           // successful response
+                  });
+                })
+                return promise 
+            };
+
+      Runtime: nodejs12.x
+
+
+  DescribeConfigRules:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt AssumeAccountRole.Arn
+      Environment:
+        Variables:
+          WADiscoveryDelegationRoleArn: !Ref WADiscoveryDelegationRoleArn
+          WADiscoveryExternalId: !Ref WADiscoveryExternalId      
+      Code:
+        ZipFile: !Sub |
+          const AWS = require("aws-sdk");
+        
+          exports.handler = async (event) => {
+              const sts = new AWS.STS({ region: process.env.REGION });
+              const params = {
+                ExternalId: process.env.WADiscoveryExternalId,
+                RoleArn: process.env.WADiscoveryDelegationRoleArn,
+                RoleSessionName: 'Test'
+              };
+              const assumeRoleStep1 = await sts.assumeRole(params).promise();
+              console.log('Changed Credentials');
+              const accessparams = {
+                accessKeyId: assumeRoleStep1.Credentials.AccessKeyId,
+                secretAccessKey: assumeRoleStep1.Credentials.SecretAccessKey,
+                sessionToken: assumeRoleStep1.Credentials.SessionToken,
+              };
+              const configservice = await new AWS.ConfigService(accessparams);
+              
+              const promise = new Promise(function(resolve, reject) {
+                var confparams = {
+                  ComplianceTypes:[ 'NON_COMPLIANT']
+                };
+                
+                configservice.describeComplianceByConfigRule(confparams, (err, data) => {
+                  if (err) console.log(err, err.stack); // an error occurred
+                  else {resolve(data)}
+                });    
+                })
+
+              return promise
+          };
+      Runtime: nodejs12.x
+
+  DeployConfigRules:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt AssumeAccountRole.Arn
+      Environment:
+        Variables:
+          WADiscoveryDelegationRoleArn: !Ref WADiscoveryDelegationRoleArn
+          WADiscoveryExternalId: !Ref WADiscoveryExternalId      
+      Code:
+        ZipFile: !Sub |
+            const AWS = require("aws-sdk");
+            exports.handler = async (event) => {
+                const sts = new AWS.STS({ region: process.env.REGION });
+                const params = {
+                  ExternalId: process.env.WADiscoveryExternalId,
+                  RoleArn: process.env.WADiscoveryDelegationRoleArn,
+                  RoleSessionName: 'Test'
+                };
+                const assumeRoleStep1 = await sts.assumeRole(params).promise();
+                console.log('Changed Credentials');
+                const accessparams = {
+                  accessKeyId: assumeRoleStep1.Credentials.AccessKeyId,
+                  secretAccessKey: assumeRoleStep1.Credentials.SecretAccessKey,
+                  sessionToken: assumeRoleStep1.Credentials.SessionToken,
+                };
+                const cloudformation = await new AWS.CloudFormation(accessparams);
+                const promise = new Promise(function(resolve, reject) {
+                var cfnparams = {
+                  StackName: 'WADiscoveryToolDemoRules', 
+                  OnFailure: 'DELETE',
+                  Parameters: [
+                    {
+                      ParameterKey: 'ScopeTagKey',
+                      ParameterValue: 'ApplicationName'
+                    },
+                    {
+                      ParameterKey: 'ScopeTagValue',
+                      ParameterValue: 'WADiscoveryTool-Demo'
+                    }        
+                    
+                  ],
+                  TemplateBody: `
+                                  Parameters:
+                                      ScopeTagKey:
+                                          Type: String
+                                      ScopeTagValue:
+                                          Type: String        
+                                  Resources:
+                                      ConfigRuleInstanceNoPublicIP: 
+                                          Type: AWS::Config::ConfigRule
+                                          Properties:
+                                              Scope: 
+                                                  TagKey: !Ref ScopeTagKey
+                                                  TagValue: !Ref ScopeTagValue
+                                              Source: 
+                                                  Owner: AWS
+                                                  SourceIdentifier: "EC2_INSTANCE_NO_PUBLIC_IP"
+                                      ConfigRuleInstanceProfileAttached: 
+                                          Type: AWS::Config::ConfigRule
+                                          Properties:
+                                              Scope: 
+                                                  TagKey: !Ref ScopeTagKey
+                                                  TagValue: !Ref ScopeTagValue
+                                              Source: 
+                                                  Owner: AWS
+                                                  SourceIdentifier: "EC2_INSTANCE_PROFILE_ATTACHED"
+                  `
+                };            
+                
+                
+                cloudformation.createStack(cfnparams, (err, data) => {
+                  if (err)console.log(err, err.stack); // an error occurred
+                  else resolve(data); // successful response
+                });   
+                
+                })
+              return promise
+            };
+
+      Runtime: nodejs12.x
+
+  DeleteConfigRules:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt AssumeAccountRole.Arn
+      Environment:
+        Variables:
+          WADiscoveryDelegationRoleArn: !Ref WADiscoveryDelegationRoleArn
+          WADiscoveryExternalId: !Ref WADiscoveryExternalId      
+      Code:
+        ZipFile: !Sub |
+            const AWS = require("aws-sdk");
+            exports.handler = async (event) => {
+                const sts = new AWS.STS({ region: process.env.REGION });
+                const params = {
+                  ExternalId: process.env.WADiscoveryExternalId,
+                  RoleArn: process.env.WADiscoveryDelegationRoleArn,
+                  RoleSessionName: 'Test'
+                };
+                const assumeRoleStep1 = await sts.assumeRole(params).promise();
+                console.log('Changed Credentials');
+                const accessparams = {
+                  accessKeyId: assumeRoleStep1.Credentials.AccessKeyId,
+                  secretAccessKey: assumeRoleStep1.Credentials.SecretAccessKey,
+                  sessionToken: assumeRoleStep1.Credentials.SessionToken,
+                };
+                const cloudformation = await new AWS.CloudFormation(accessparams);
+                const promise = new Promise(function(resolve, reject) {
+                var cfnparams = { StackName: 'WADiscoveryToolDemoRules'}
+                cloudformation.deleteStack(cfnparams, (err, data) => {
+                  if (err)console.log(err, err.stack); // an error occurred
+                  else resolve(data); // successful response
+                });    
+                })
+              return promise  
+            };
+      Runtime: nodejs12.x
+
+Outputs:
+  CentralAccountRoleArn:
+    Value: !GetAtt AssumeAccountRole.Arn   

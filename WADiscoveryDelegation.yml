@@ -1,0 +1,51 @@
+Description: 'CloudFormation stack for WA Discovery delegation'
+Resources:
+  WADiscoveryDelegationRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+              - !Sub arn:aws:iam::${WADiscoveryAccountId}:root
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref WADiscoveryExternalId
+      Path: /
+      RoleName: WADiscoveryDelegationRole
+      Policies:
+        - PolicyName: Resources
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 'config:*'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'cloudformation:*'
+                Resource: '*'                
+
+
+
+
+Parameters:
+  WADiscoveryExternalId:
+    Description: 'The external id sting Discovery Service will use to assume role.'
+    Type: String
+  WADiscoveryAccountId:
+    Description: 'The Discovery Service Account ID for.'
+    Type: String
+
+Outputs:
+  WADiscoveryDelegationRoleArn:
+    Description: 'The ARN for the WA Discovery delegation role.'
+    Value: !GetAtt
+      - WADiscoveryDelegationRole
+      - Arn
+  WADiscoveryExternalId:
+    Description: 'The additional identification Discovery Service will use to assume role.'
+    Value: !Ref WADiscoveryExternalId 

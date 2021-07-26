@@ -1,0 +1,283 @@
+Outputs:
+  OutputVPC:
+    Description: Baseline VPC
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcId"
+  OutputVPCCidrBlock:
+    Description: Baseline VPC Cidr Block
+    Value: !GetAtt VPC.CidrBlock
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcCidrBlock"      
+  OutputPublicSubnet1:
+    Description: Public Subnet 1 VPC
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnet1"
+  OutputPublicSubnet2:
+    Description: Public Subnet 2 VPC
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnet2"
+  OutputPrivateSubnet1:
+    Description: Private Subnet 1 VPC
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnet1"
+  OutputPrivateSubnet2:
+    Description: Private Subnet 2 VPC
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnet2"
+  OutputInstanceId:
+    Description: EC2 Instance Id
+    Value: !Ref EC2Instance
+  OutputInstanceSecurityGroup:
+    Description: EC2 Instance Security Group
+    Value: !Ref EC2InstanceSecurityGroup
+
+
+Resources:
+  #------------------------------------------------------------
+  # Create a VPC with a public and private subnet
+  #------------------------------------------------------------
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 172.31.0.0/16
+      Tags:
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+  
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Sub ${AWS::Region}a
+      CidrBlock: 172.31.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: !Join [ "-", [ !Ref VPC, "PublicSubnet1"]]
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+  
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Sub ${AWS::Region}b
+      CidrBlock: 172.31.3.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: !Join [ "-", [ !Ref VPC, "PublicSubnet2"]]
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Sub ${AWS::Region}a
+      CidrBlock: 172.31.2.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value: !Join [ "-", [ !Ref VPC, "PrivateSubnet1"]]
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Sub ${AWS::Region}b
+      CidrBlock: 172.31.4.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value: !Join [ "-", [ !Ref VPC, "PrivateSubnet2"]]
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+
+  #-------------------------------------------------------------
+  # Create an IGW and attach to the created VPC
+  # Create a NAT GW with an associated public IP address.
+  #------------------------------------------------------------- 
+
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Join [ "-", [ !Ref VPC, "igw"]]
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+
+  IGWAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref IGW
+  
+  NatGateway:
+    Type: "AWS::EC2::NatGateway"
+    DependsOn: NatPublicIP
+    Properties: 
+      AllocationId: !GetAtt NatPublicIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+      - Key: Name
+        Value: !Join [ "-", [ !Ref VPC, "nat"]]
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+
+  NatPublicIP:
+    Type: "AWS::EC2::EIP"
+    DependsOn: VPC
+    Properties:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: !Join [ "-", [ !Ref VPC, "NatPublicIP"]]
+      - Key: ApplicationName
+        Value: "WADiscoveryTool-Demo"
+      
+  #-------------------------------------------------------------
+  # Create public route table and attach to the public subnets
+  #-------------------------------------------------------------
+
+  PublicRouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Join [ "-", [ !Ref VPC, "PublicRouteTable1"]]
+        - Key: ApplicationName
+          Value: "WADiscoveryTool-Demo"
+  
+  PublicRouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Join [ "-", [ !Ref VPC, "PublicRouteTable2"]]
+        - Key: ApplicationName
+          Value: "WADiscoveryTool-Demo"
+  
+  PublicRoute1:
+    Type: 'AWS::EC2::Route'
+    DependsOn: 
+      - IGW
+      - IGWAttach
+    Properties:
+      RouteTableId: !Ref PublicRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+
+  PublicRoute2:
+    Type: 'AWS::EC2::Route'
+    DependsOn: 
+      - IGW
+      - IGWAttach
+    Properties:
+      RouteTableId: !Ref PublicRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+  
+  PublicSubnet1RouteTableAssociation1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable1
+
+  PublicSubnet1RouteTableAssociation2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable2
+
+  #-------------------------------------------------------------
+  # Create public route table and attach to the public subnets
+  #-------------------------------------------------------------
+
+  PrivateRouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Join [ "-", [ !Ref VPC, "PrivateRouteTable1"]]
+        - Key: ApplicationName
+          Value: "WADiscoveryTool-Demo"
+  
+  PrivateRouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Join [ "-", [ !Ref VPC, "PrivateRouteTable2"]]
+        - Key: ApplicationName
+          Value: "WADiscoveryTool-Demo"
+
+  PrivateRoute1:
+    Type: 'AWS::EC2::Route'
+    DependsOn: IGW
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateRoute2:
+    Type: 'AWS::EC2::Route'
+    DependsOn: IGW
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1RouteTableAssociation1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateSubnet1RouteTableAssociation2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+  EC2InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "EC2 Instance Security Group"
+      VpcId: !Ref VPC
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref EC2Instance
+  EC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: ami-0c9fe0dec6325a30c 
+      InstanceType: m5.large
+      SubnetId: !Ref PublicSubnet1
+      SecurityGroupIds:
+        - Ref: EC2InstanceSecurityGroup
+      Tags:
+         - Key: ApplicationName
+           Value: "WADiscoveryTool-Demo"

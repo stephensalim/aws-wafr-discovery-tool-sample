@@ -1,0 +1,24 @@
+Parameters:
+    ScopeTagKey:
+        Type: String
+    ScopeTagValue:
+        Type: String        
+Resources:
+    ConfigRuleInstanceNoPublicIP: 
+        Type: AWS::Config::ConfigRule
+        Properties:
+            Scope: 
+                TagKey: !Ref ScopeTagKey
+                TagValue: !Ref ScopeTagValue
+            Source: 
+                Owner: AWS
+                SourceIdentifier: "EC2_INSTANCE_NO_PUBLIC_IP"
+    ConfigRuleInstanceProfileAttached: 
+        Type: AWS::Config::ConfigRule
+        Properties:
+            Scope: 
+                TagKey: !Ref ScopeTagKey
+                TagValue: !Ref ScopeTagValue
+            Source: 
+                Owner: AWS
+                SourceIdentifier: "EC2_INSTANCE_PROFILE_ATTACHED"
