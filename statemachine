@@ -1,0 +1,86 @@
+{
+  "Comment": "This is your state machine",
+  "StartAt": "Identify Source",
+  "States": {
+    "Identify Source": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:ap-southeast-2:022787131977:function:dump:$LATEST"
+      },
+      "Next": "Choice"
+    },
+    "Choice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Payload",
+          "StringMatches": "Rule1",
+          "Next": "Deploy Checks"
+        }
+      ],
+      "Default": "Deploy Stack"
+    },
+    "Deploy Checks": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:ap-southeast-2:022787131977:function:dump:$LATEST"
+      },
+      "Next": "Wait"
+    },
+    "Wait": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "Gather Results"
+    },
+    "Gather Results": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:ap-southeast-2:022787131977:function:WADiscoveryController-DescribeConfigRules-Prwbd0vyUffL:$LATEST"
+      },
+      "Next": "Generate WA Answers"
+    },
+    "Generate WA Answers": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:ap-southeast-2:022787131977:function:WADiscoveryController-CreateWorkload-bHnlJWofNkXp:$LATEST"
+      },
+      "Next": "Generate WA Report"
+    },
+    "Generate WA Report": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:ap-southeast-2:022787131977:function:WADiscoveryController-UpdateAnswerWorkload-EBtvItDlchTJ:$LATEST"
+      },
+      "Next": "SNS Publish",
+      "InputPath": "$.Payload"
+    },
+    "SNS Publish": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message.$": "$",
+        "TopicArn": "arn:aws:sns:ap-southeast-2:022787131977:amplify_codecommit_topic"
+      },
+      "End": true
+    },
+    "Deploy Stack": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:ap-southeast-2:022787131977:function:dump:$LATEST"
+      },
+      "Next": "Deploy Checks"
+    }
+  }
+}
